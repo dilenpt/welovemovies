@@ -1,47 +1,36 @@
-const service = require("./movies.service");
+const service = require("./reviews.service");
+const asyncErrorBoundary = require("../errors/asyncErrorBoundary");
 
-function list(req, res, next) {
-  service
-    .list(req.query.is_showing)
-    .then((data) => res.json({ data }))
-    .catch(next);
-}
-//Validation function
-function exists(req, res, next) {
-  service
-    .read(req.params.movieId)
-    .then((movie) => {
-      if (movie) {
-        res.locals.movie = movie;
-        return next();
-      }
-      next({ status: 404, message: `Movie cannot be found.` });
-    })
-    .catch(next);
+// Validation middleware function:
+async function reviewExists(req, res, next) {
+  const review = await service.read(req.params.reviewId);
+  if (review) {
+    res.locals.review = review;
+    return next();
+  }
+  next({ status: 404, message: "Review cannot be found." });
 }
 
-function read(req, res) {
-  const { movie: data } = res.locals;
+// Route handlers:
+async function update(req, res, next) {
+  const updatedReview = {
+    ...req.body.data,
+    review_id: res.locals.review.review_id,
+  };
+  // Updating the review
+  await service.update(updatedReview);
+  // Acquiring data that will include fields from both the reviews and critics tables
+  const data = await service.read(res.locals.review.review_id);
   res.json({ data });
 }
 
-function listTheaters(req, res, next) {
-  service
-    .listTheaters(req.params.movieId)
-    .then((data) => res.json({ data }))
-    .catch(next);
-}
-
-function listReviews(req, res, next) {
-  service
-    .listReviews(req.params.movieId)
-    .then((data) => res.json({ data }))
-    .catch(next);
+async function destroy(req, res, next) {
+  const { review } = res.locals;
+  await service.destroy(review.review_id);
+  res.sendStatus(204);
 }
 
 module.exports = {
-  list,
-  read: [exists, read],
-  listTheaters,
-  listReviews
+  update: [asyncErrorBoundary(reviewExists), asyncErrorBoundary(update)],
+  delete: [asyncErrorBoundary(reviewExists), asyncErrorBoundary(destroy)],
 };
